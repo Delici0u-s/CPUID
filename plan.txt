@@ -1,0 +1,4 @@
+CPUID_basic
+  like get, structs etc
+CPUID_enums ggf
+CPUID_to_struct
