@@ -59,9 +59,17 @@ void print_regs(de_cpuid_regs _r) {
 }
 
 int main() {
-  u32 a = de_Cos_pi__ft_bits_feature_info_flags_avx;
-  print_u64_bin(a);
-  return 1;
+  de_Cos_pi__ft_bits _s;
+  de_CPUID__pi__ft_bits(&_s);
+  de_CPUID__pi__ft_bits_print(&_s);
+  // printf("%d\n", _s.processor_version_information.processor_type);
+  return 0;
+
+  de_Cos_max_iax_manufacturer_ID man;
+  de_CPUID_max_IAX_manufacturer_ID(&man);
+  puts(man.manufacturer_ID);
+  printf("%u\n", man.max_CPUID_EAX);
+  return 0;
 
   de_cpuid_regs i;
   // de_cpuid_call_(DE_CIAX___EX_FT_2, &i);
