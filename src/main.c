@@ -6,25 +6,24 @@
 #include <de_CPUID_base.h>
 #include <de_CPUID.h>
 
-/* _inp = (u32)1 => 10000000000000000000000000000000 */
+/* _inp = (u32)1 => 00000000000000000000000000000001 */
 void print_u32_bin(u32 _inp) {
-  for (usize i = 0; i != 32; ++i) {
-    printf("%c", ((_inp >> i) & (((u32)1))) == 0 ? '0' : '1');
+  for (usize i = 32; i-- > 0;) {
+    putchar((_inp >> i) & 1 ? '1' : '0');
   }
-  puts("");
+  putchar('\n');
 }
 void print_u64_bin(u64 _inp) {
-  for (usize i = 0; i != 64; ++i) {
-    printf("%c", ((_inp >> i) & (((u64)1))) == 0 ? '0' : '1');
+  for (usize i = 64; i-- > 0;) {
+    putchar((_inp >> i) & 1 ? '1' : '0');
   }
-  puts("");
+  putchar('\n');
 }
-
 void print_u32_char(u32 _inp) {
-  for (usize i = 0; i != 4; ++i) {
-    printf("%c", (_inp >> (8 * i)) & 0xFF);
+  for (usize i = 4; i-- > 0;) {
+    putchar((_inp >> (8 * i)) & 0xFF);
   }
-  puts("");
+  putchar('\n');
 }
 
 void print_regs_char(de_cpuid_regs _r) {
@@ -59,9 +58,14 @@ void print_regs(de_cpuid_regs _r) {
 }
 
 int main() {
+  de_Cos_max_iax_manufacturer_ID _m;
+  de_CPUID_max_IAX_manufacturer_ID(&_m);
+  de_CPUID_max_IAX_manufacturer_ID_print(&_m);
+
   de_Cos_pi__ft_bits _s;
   de_CPUID__pi__ft_bits(&_s);
   de_CPUID__pi__ft_bits_print(&_s);
+
   // printf("%d\n", _s.processor_version_information.processor_type);
   return 0;
 
