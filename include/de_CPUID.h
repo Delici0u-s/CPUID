@@ -204,38 +204,40 @@ L1I: L1 instruction cache
 L1D: L1 data cache
 L2TLB: shared TLB
 */
-typedef enum {
-  de_Cos_CACHE__TLB_associativity_8_way,
-  de_Cos_CACHE__TLB_associativity_6_way,
-  de_Cos_CACHE__TLB_associativity_4_way,
-  de_Cos_CACHE__TLB_associativity_fully,
-} de_Cos_CACHE__TLB_associativity;
 
 typedef struct {
-  usize entities;
+  usize entries;
   usize page_size;
   de_cpuid_bitesize page_size_type;
-  de_Cos_CACHE__TLB_associativity associativity;
+  usize associativity; /* 0 -> fully */
 } de_Cos_CACHE__TLB_TLB;
+
+typedef struct {
+  usize cache_line_size;
+  usize page_size;
+  de_cpuid_bitesize page_size_type;
+  usize associativity; /* 0 -> fully */
+} de_Cos_CACHE__TLB_TLB_A;
 
 typedef struct {
   usize capacity;
   de_cpuid_bitesize capacity_type;
-  de_Cos_CACHE__TLB_associativity associativity;
+  usize associativity; /* 0 -> fully */
   usize cache_line_size;
+  usize cache_sector_size;
 } de_Cos_CACHE__TLB_CACHE;
 
 typedef struct {
   /* μop */
   usize capacity_uop;
   de_cpuid_bitesize capacity_type;
-  de_Cos_CACHE__TLB_associativity associativity;
+  usize associativity; /* 0 -> fully */
 } de_Cos_CACHE__TLB_TRACE_CACHE;
 
 typedef struct {
-  de_Cos_CACHE__TLB_TLB ITLB;
-  de_Cos_CACHE__TLB_TLB DTLB;
-  de_Cos_CACHE__TLB_CACHE L1;
+  de_Cos_CACHE__TLB_TLB L1I;
+  de_Cos_CACHE__TLB_TLB L1D;
+  de_Cos_CACHE__TLB_TLB_A L1D_ALTERNATIVE;
   de_Cos_CACHE__TLB_CACHE L2;
   de_Cos_CACHE__TLB_CACHE L3;
   de_Cos_CACHE__TLB_TLB L2TLB_1;
@@ -667,10 +669,798 @@ DE_CPUID_INTERNAL u0 de_CPUID__pi__ft_bits_print(de_Cos_pi__ft_bits *_s) {
 }
 DE_CPUID_INTERNAL u0 de_CPUID__CACHE__TLB_byte_switch(de_Cos_CACHE__TLB *_s, u8 byte) {
   switch (byte) {
-  case 0xB1: /* ... */ break;
-  case 0x87: /* ... */ break;
-  /* add the rest of your descriptor cases */
-  default: /* unknown descriptor: record or ignore */ break;
+  case 0x00: { /* Null descriptor: contains no information */ break;
+  }
+  case 0x01: { /* Instruction TLB: 4K pages, 4-way, 32 entries */
+    _s->L1I.entries = 32;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 4;
+    break;
+  }
+  case 0x02: { /* Instruction TLB: 4M pages, fully associative, 2 entries */
+    _s->L1I.entries = 2;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = megabyte;
+    _s->L1I.associativity = 0;
+    break;
+  }
+  case 0x03: { /* Data TLB: 4K pages, 4-way, 64 entries */
+    _s->L1D.entries = 64;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x04: { /* Data TLB: 4M pages, 4-way, 8 entries */
+    _s->L1D.entries = 8;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = megabyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x05: { /* Data TLB1: 4M pages, 4-way, 32 entries */
+    /* The table labels this as "Data TLB1" — treat as L1D (primary data TLB) */
+    _s->L1D.entries = 32;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = megabyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x06: {           /* 1st-level instruction cache: 8 KBytes, 4-way, 32 byte line */
+    _s->L1I.entries = 0; /* Not a TLB; reuse L1I struct for L1I cache is ambiguous: we'll fill L1I cache-like fields in
+                            L2/L3 not available. */
+    _s->L1I.page_size = 0;
+    /* Use L1I struct for TLB only. For caches use L2/L3 structs: map 1st-level instruction cache to L1I's corresponding
+       "cache" fields don't exist. So store as L1I entries==0 and set L2/L3 unaffected. Alternatively store in
+       L1I.page_size as capacity (kilobyte). */
+    /* We'll set L1I.page_size to 8 KB so that code reading this can detect L1 instruction cache capacity */
+    _s->L1I.page_size = 8;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 4; /* 4-way */
+    /* cache line size handled elsewhere (no slot in TLB struct) */
+    break;
+  }
+  case 0x08: { /* 1st-level instruction cache: 16 KBytes, 4-way, 32 byte line */
+    _s->L1I.page_size = 16;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 4;
+    break;
+  }
+  case 0x09: { /* 1st-level instruction cache: 32 KBytes, 4-way, 64 byte line */
+    _s->L1I.page_size = 32;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 4;
+    /* store cache line in L1D.cache_line_size (best-effort) */
+    _s->L1D.entries = _s->L1D.entries; /* no-op to avoid unused warning */
+    break;
+  }
+  case 0x0A: { /* 1st-level data cache: 8 KBytes, 2-way, 32 byte line */
+    _s->L1D.entries = 0;
+    /* place at L1D.page_size to indicate capacity */
+    _s->L1D.page_size = 8;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 2;
+    break;
+  }
+  case 0x0B: { /* Instruction TLB: 4M pages, 4-way, 4 entries */
+    _s->L1I.entries = 4;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = megabyte;
+    _s->L1I.associativity = 4;
+    break;
+  }
+  case 0x0C: { /* 1st-level data cache: 16 KBytes, 4-way, 32 byte line */
+    _s->L1D.page_size = 16;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x0D: { /* 1st-level data cache: 16 KBytes, 4-way, 64 byte line */
+    _s->L1D.page_size = 16;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    _s->L1D.entries = _s->L1D.entries; /* no-op */
+    break;
+  }
+  case 0x0E: { /* 1st-level data cache: 24 KBytes, 6-way, 64 byte line */
+    _s->L1D.page_size = 24;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 6;
+    break;
+  }
+  case 0x1D: { /* 2nd-level cache: 128 KBytes, 2-way, 64 byte line */
+    _s->L2.capacity = 128;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 2;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x21: { /* 2nd-level cache: 256 KBytes, 8-way, 64 byte line */
+    _s->L2.capacity = 256;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x22: { /* 3rd-level cache: 512 KBytes, 4-way, 64 byte line, 2 lines per sector */
+    _s->L3.capacity = 512;
+    _s->L3.capacity_type = kilobyte;
+    _s->L3.associativity = 4;
+    _s->L3.cache_line_size = 64;
+    _s->L3.cache_sector_size = 2;
+    break;
+  }
+  case 0x23: { /* 3rd-level cache: 1 MByte, 8-way, 64 byte line, 2 lines per sector */
+    _s->L3.capacity = 1;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 8;
+    _s->L3.cache_line_size = 64;
+    _s->L3.cache_sector_size = 2;
+    break;
+  }
+  case 0x24: { /* 2nd-level cache: 1 MByte, 16-way, 64 byte line */
+    _s->L2.capacity = 1;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 16;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x25: { /* 3rd-level cache: 2 MBytes, 8-way, 64 byte line, 2 lines per sector */
+    _s->L3.capacity = 2;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 8;
+    _s->L3.cache_line_size = 64;
+    _s->L3.cache_sector_size = 2;
+    break;
+  }
+  case 0x29: { /* 3rd-level cache: 4 MBytes, 8-way, 64 byte line, 2 lines per sector */
+    _s->L3.capacity = 4;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 8;
+    _s->L3.cache_line_size = 64;
+    _s->L3.cache_sector_size = 2;
+    break;
+  }
+  case 0x2C: { /* 1st-level data cache: 32 KBytes, 8-way, 64 byte line */
+    _s->L1D.page_size = 32;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 8;
+    _s->L1D.entries = _s->L1D.entries; /* no-op */
+    break;
+  }
+  case 0x30: { /* 1st-level instruction cache: 32 KBytes, 8-way, 64 byte line */
+    _s->L1I.page_size = 32;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 8;
+    break;
+  }
+  case 0x40: { /* No 2nd-level cache or if processor contains valid 2nd-level cache, no 3rd-level cache */
+    /* Set L2 and L3 capacities to 0 to indicate absent */
+    _s->L2.capacity = 0;
+    _s->L3.capacity = 0;
+    break;
+  }
+  case 0x41: { /* 2nd-level cache: 128 KBytes, 4-way, 32 byte line */
+    _s->L2.capacity = 128;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 4;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x42: { /* 2nd-level cache: 256 KBytes, 4-way, 32 byte line */
+    _s->L2.capacity = 256;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 4;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x43: { /* 2nd-level cache: 512 KBytes, 4-way, 32 byte line */
+    _s->L2.capacity = 512;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 4;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x44: { /* 2nd-level cache: 1 MByte, 4-way, 32 byte line */
+    _s->L2.capacity = 1;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 4;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x45: { /* 2nd-level cache: 2 MByte, 4-way, 32 byte line */
+    _s->L2.capacity = 2;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 4;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x46: { /* 3rd-level cache: 4 MByte, 4-way, 64 byte line */
+    _s->L3.capacity = 4;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 4;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0x47: { /* 3rd-level cache: 8 MByte, 8-way, 64 byte line */
+    _s->L3.capacity = 8;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 8;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0x48: { /* 2nd-level cache: 3 MByte, 12-way, 64 byte line */
+    _s->L2.capacity = 3;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 12;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x49: { /* 3rd-level cache: 4MB, 16-way, 64 byte line (or special-case 2nd-level in some families) */
+    _s->L3.capacity = 4;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 16;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0x4A: { /* 3rd-level cache: 6MByte, 12-way, 64 byte line */
+    _s->L3.capacity = 6;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 12;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0x4B: { /* 3rd-level cache: 8MByte, 16-way, 64 byte line */
+    _s->L3.capacity = 8;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 16;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0x4C: { /* 3rd-level cache: 12MByte, 12-way, 64 byte line */
+    _s->L3.capacity = 12;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 12;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0x4D: { /* 3rd-level cache: 16MByte, 16-way, 64 byte line */
+    _s->L3.capacity = 16;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 16;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0x4E: { /* 2nd-level cache: 6MByte, 24-way, 64 byte line */
+    _s->L2.capacity = 6;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 24;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x4F: { /* Instruction TLB: 4 KByte pages, 32 entries */
+    _s->L1I.entries = 32;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 0; /* spec lists no-way; treat as ???; keep default associativity */
+    break;
+  }
+  case 0x50: { /* Instruction TLB: 4K and 2M/4M pages, 64 entries */
+    _s->L1I.entries = 64;
+    /* set to smallest page size (4K) */
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 0; /* unspecified -> leave as-is */
+    break;
+  }
+  case 0x51: { /* Instruction TLB: 4K and 2M/4M pages, 128 entries */
+    _s->L1I.entries = 128;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    break;
+  }
+  case 0x52: { /* Instruction TLB: 4K and 2M/4M pages, 256 entries */
+    _s->L1I.entries = 256;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    break;
+  }
+  case 0x55: { /* Instruction TLB: 2M/4M pages, fully associative, 7 entries */
+    _s->L1I.entries = 7;
+    _s->L1I.page_size = 2;
+    _s->L1I.page_size_type = megabyte;
+    _s->L1I.associativity = 0;
+    break;
+  }
+  case 0x56: { /* Data TLB0: 4 MByte pages, 4-way, 16 entries */
+    _s->L1D.entries = 16;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = megabyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x57: { /* Data TLB0: 4 KByte pages, 4-way, 16 entries */
+    _s->L1D.entries = 16;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x59: { /* Data TLB0: 4 KByte pages, fully associative, 16 entries */
+    _s->L1D.entries = 16;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 0;
+    break;
+  }
+  case 0x5A: { /* Data TLB0: 2M or 4M pages, 4-way, 32 entries */
+    _s->L1D.entries = 32;
+    _s->L1D.page_size = 2;
+    _s->L1D.page_size_type = megabyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x5B: { /* Data TLB: 4K and 4M pages, 64 entries */
+    _s->L1D.entries = 64;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    break;
+  }
+  case 0x5C: { /* Data TLB: 4K and 4M pages, 128 entries */
+    _s->L1D.entries = 128;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    break;
+  }
+  case 0x5D: { /* Data TLB: 4K and 4M pages, 256 entries */
+    _s->L1D.entries = 256;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    break;
+  }
+  case 0x60: { /* 1st-level data cache: 16 KByte, 8-way, 64 byte line */
+    _s->L1D.page_size = 16;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 8;
+    _s->L1D.entries = _s->L1D.entries; /* no-op */
+    break;
+  }
+  case 0x61: { /* Instruction TLB: 4K pages, fully associative, 48 entries */
+    _s->L1I.entries = 48;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 0;
+    break;
+  }
+  case 0x63: { /* Data TLB: 2M/4M pages, 4-way, 32 entries + separate 1GB array 4 entries */
+    _s->L1D.entries = 32;
+    _s->L1D.page_size = 2;
+    _s->L1D.page_size_type = megabyte;
+    _s->L1D.associativity = 4;
+    /* store 1GB array info in L2TLB_2 */
+    _s->L2TLB_2.entries = 4;
+    _s->L2TLB_2.page_size = 1;
+    _s->L2TLB_2.page_size_type = gigabyte;
+    _s->L2TLB_2.associativity = 4;
+    break;
+  }
+  case 0x64: { /* Data TLB: 4 KByte pages, 4-way, 512 entries */
+    _s->L1D.entries = 512;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0x66: { /* 1st-level data cache: 8 KByte, 4-way, 64 byte line */
+    _s->L1D_ALTERNATIVE.page_size = 8;
+    _s->L1D_ALTERNATIVE.page_size_type = kilobyte;
+    _s->L1D_ALTERNATIVE.associativity = 4;
+    _s->L1D_ALTERNATIVE.cache_line_size = 64;
+    break;
+  }
+  case 0x67: { /* 1st-level data cache: 16 KByte, 4-way, 64 byte line */
+    _s->L1D_ALTERNATIVE.page_size = 16;
+    _s->L1D_ALTERNATIVE.page_size_type = kilobyte;
+    _s->L1D_ALTERNATIVE.associativity = 4;
+    _s->L1D_ALTERNATIVE.cache_line_size = 64;
+    break;
+  }
+  case 0x68: { /* 1st-level data cache: 32 KByte, 4-way, 64 byte line */
+    _s->L1D_ALTERNATIVE.page_size = 32;
+    _s->L1D_ALTERNATIVE.page_size_type = kilobyte;
+    _s->L1D_ALTERNATIVE.associativity = 4;
+    _s->L1D_ALTERNATIVE.cache_line_size = 64;
+    break;
+  }
+  case 0x6A: { /* uTLB: 4 KByte pages, 8-way, 64 entries */
+    /* Micro-op TLB — map to trace_cache or L2TLB_1? We'll put in L2TLB_1 */
+    _s->L2TLB_1.entries = 64;
+    _s->L2TLB_1.page_size = 4;
+    _s->L2TLB_1.page_size_type = kilobyte;
+    _s->L2TLB_1.associativity = 8;
+    break;
+  }
+  case 0x6B: { /* DTLB: 4 KByte pages, 8-way, 256 entries */
+    _s->L1D.entries = 256;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 8;
+    break;
+  }
+  case 0x6C: { /* DTLB: 2M/4M pages, 8-way, 128 entries */
+    _s->L1D.entries = 128;
+    _s->L1D.page_size = 2;
+    _s->L1D.page_size_type = megabyte;
+    _s->L1D.associativity = 8;
+    break;
+  }
+  case 0x6D: { /* DTLB: 1 GByte pages, fully associative, 16 entries */
+    _s->L1D.entries = 16;
+    _s->L1D.page_size = 1;
+    _s->L1D.page_size_type = gigabyte;
+    _s->L1D.associativity = 0;
+    break;
+  }
+  case 0x70: { /* Trace cache: 12 K-μop, 8-way */
+    _s->trace_cache.capacity_uop = 12;
+    _s->trace_cache.capacity_type = kilobyte; /* interpret K-μop as kilobyte enum for size unit */
+    _s->trace_cache.associativity = 8;
+    break;
+  }
+  case 0x71: { /* Trace cache: 16 K-μop, 8-way */
+    _s->trace_cache.capacity_uop = 16;
+    _s->trace_cache.capacity_type = kilobyte;
+    _s->trace_cache.associativity = 8;
+    break;
+  }
+  case 0x72: { /* Trace cache: 32 K-μop, 8-way */
+    _s->trace_cache.capacity_uop = 32;
+    _s->trace_cache.capacity_type = kilobyte;
+    _s->trace_cache.associativity = 8;
+    break;
+  }
+  case 0x76: { /* Instruction TLB: 2M/4M pages, fully associative, 8 entries */
+    _s->L1I.entries = 8;
+    _s->L1I.page_size = 2;
+    _s->L1I.page_size_type = megabyte;
+    _s->L1I.associativity = 0;
+    break;
+  }
+  case 0x78: { /* 2nd-level cache: 1 MByte, 4-way, 64 byte line */
+    _s->L2.capacity = 1;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 4;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x79: { /* 2nd-level cache: 128 KByte, 8-way, 64 byte line, 2 lines per sector */
+    _s->L2.capacity = 128;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    _s->L2.cache_sector_size = 2;
+    break;
+  }
+  case 0x7A: { /* 2nd-level cache: 256 KByte, 8-way, 64 byte line, 2 lines per sector */
+    _s->L2.capacity = 256;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    _s->L2.cache_sector_size = 2;
+    break;
+  }
+  case 0x7B: { /* 2nd-level cache: 512 KByte, 8-way, 64 byte line, 2 lines per sector */
+    _s->L2.capacity = 512;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    _s->L2.cache_sector_size = 2;
+    break;
+  }
+  case 0x7C: { /* 2nd-level cache: 1 MByte, 8-way, 64 byte line, 2 lines per sector */
+    _s->L2.capacity = 1;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    _s->L2.cache_sector_size = 2;
+    break;
+  }
+  case 0x7D: { /* 2nd-level cache: 2 MByte, 8-way, 64 byte line */
+    _s->L2.capacity = 2;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x7F: { /* 2nd-level cache: 512 KByte, 2-way, 64 byte line */
+    _s->L2.capacity = 512;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 2;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x80: { /* 2nd-level cache: 512 KByte, 8-way, 64 byte line */
+    _s->L2.capacity = 512;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x82: { /* 2nd-level cache: 256 KByte, 8-way, 32 byte line */
+    _s->L2.capacity = 256;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x83: { /* 2nd-level cache: 512 KByte, 8-way, 32 byte line */
+    _s->L2.capacity = 512;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x84: { /* 2nd-level cache: 1 MByte, 8-way, 32 byte line */
+    _s->L2.capacity = 1;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x85: { /* 2nd-level cache: 2 MByte, 8-way, 32 byte line */
+    _s->L2.capacity = 2;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 32;
+    break;
+  }
+  case 0x86: { /* 2nd-level cache: 512 KByte, 4-way, 64 byte line */
+    _s->L2.capacity = 512;
+    _s->L2.capacity_type = kilobyte;
+    _s->L2.associativity = 4;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0x87: { /* 2nd-level cache: 1 MByte, 8-way, 64 byte line */
+    _s->L2.capacity = 1;
+    _s->L2.capacity_type = megabyte;
+    _s->L2.associativity = 8;
+    _s->L2.cache_line_size = 64;
+    break;
+  }
+  case 0xA0: { /* DTLB: 4K pages, fully associative, 32 entries */
+    _s->L1D.entries = 32;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 0;
+    break;
+  }
+  case 0xB0: { /* Instruction TLB: 4K pages, 4-way, 128 entries */
+    _s->L1I.entries = 128;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 4;
+    break;
+  }
+  case 0xB1: {           /* Instruction TLB: 2M pages 4-way 8 entries OR 4M pages 4-way 4 entries */
+    _s->L1I.entries = 8; /* choose the 2M case as primary */
+    _s->L1I.page_size = 2;
+    _s->L1I.page_size_type = megabyte;
+    _s->L1I.associativity = 4;
+    break;
+  }
+  case 0xB2: { /* Instruction TLB: 4K pages, 4-way, 64 entries */
+    _s->L1I.entries = 64;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 4;
+    break;
+  }
+  case 0xB3: { /* Data TLB: 4K pages, 4-way, 128 entries */
+    _s->L1D.entries = 128;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0xB4: { /* Data TLB1: 4K pages, 4-way, 256 entries */
+    _s->L1D.entries = 256;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0xB5: { /* Instruction TLB: 4K pages, 8-way, 64 entries */
+    _s->L1I.entries = 64;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 8;
+    break;
+  }
+  case 0xB6: { /* Instruction TLB: 4K pages, 8-way, 128 entries */
+    _s->L1I.entries = 128;
+    _s->L1I.page_size = 4;
+    _s->L1I.page_size_type = kilobyte;
+    _s->L1I.associativity = 8;
+    break;
+  }
+  case 0xBA: { /* Data TLB1: 4K pages, 4-way, 64 entries */
+    _s->L1D.entries = 64;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0xC0: { /* Data TLB: 4K and 4M pages, 4-way, 8 entries */
+    _s->L1D.entries = 8;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0xC1: { /* STLB: Shared 2nd-Level TLB: 4K/2M, 8-way, 1024 entries */
+    _s->L2TLB_1.entries = 1024;
+    _s->L2TLB_1.page_size = 4; /* primary smaller page */
+    _s->L2TLB_1.page_size_type = kilobyte;
+    _s->L2TLB_1.associativity = 8;
+    break;
+  }
+  case 0xC2: { /* DTLB: 4K/2M pages, 4-way, 16 entries */
+    _s->L1D.entries = 16;
+    _s->L1D.page_size = 4;
+    _s->L1D.page_size_type = kilobyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0xC3: { /* STLB: Shared 2nd-Level TLB: 4K/2M, 6-way, 1536 entries. Also 1GB pages, 4-way, 16 entries */
+    /* put the primary (4K/2M) in L2TLB_1 and the 1GB array in L2TLB_2 */
+    _s->L2TLB_1.entries = 1536;
+    _s->L2TLB_1.page_size = 4;
+    _s->L2TLB_1.page_size_type = kilobyte;
+    _s->L2TLB_1.associativity = 6;
+
+    _s->L2TLB_2.entries = 16;
+    _s->L2TLB_2.page_size = 1;
+    _s->L2TLB_2.page_size_type = gigabyte;
+    _s->L2TLB_2.associativity = 4;
+    break;
+  }
+  case 0xC4: { /* DTLB: 2M/4M pages, 4-way, 32 entries */
+    _s->L1D.entries = 32;
+    _s->L1D.page_size = 2;
+    _s->L1D.page_size_type = megabyte;
+    _s->L1D.associativity = 4;
+    break;
+  }
+  case 0xCA: { /* STLB: Shared 2nd-Level TLB: 4K pages, 4-way, 512 entries */
+    _s->L2TLB_1.entries = 512;
+    _s->L2TLB_1.page_size = 4;
+    _s->L2TLB_1.page_size_type = kilobyte;
+    _s->L2TLB_1.associativity = 4;
+    break;
+  }
+  case 0xD0: { /* 3rd-level cache: 512 KByte, 4-way, 64 byte line */
+    _s->L3.capacity = 512;
+    _s->L3.capacity_type = kilobyte;
+    _s->L3.associativity = 4;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xD1: { /* 3rd-level cache: 1 MByte, 4-way, 64 byte line */
+    _s->L3.capacity = 1;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 4;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xD2: { /* 3rd-level cache: 2 MByte, 4-way, 64 byte line */
+    _s->L3.capacity = 2;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 4;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xD6: { /* 3rd-level cache: 1 MByte, 8-way, 64 byte line */
+    _s->L3.capacity = 1;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 8;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xD7: { /* 3rd-level cache: 2 MByte, 8-way, 64 byte line */
+    _s->L3.capacity = 2;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 8;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xD8: { /* 3rd-level cache: 4 MByte, 8-way, 64 byte line */
+    _s->L3.capacity = 4;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 8;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xDC: {              /* 3rd-level cache: 1.5 MByte, 12-way, 64 byte line */
+    _s->L3.capacity = 1536; /* store KB as 1536 KB */
+    _s->L3.capacity_type = kilobyte;
+    _s->L3.associativity = 12;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xDD: { /* 3rd-level cache: 3 MByte, 12-way, 64 byte line */
+    _s->L3.capacity = 3;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 12;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xDE: { /* 3rd-level cache: 6 MByte, 12-way, 64 byte line */
+    _s->L3.capacity = 6;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 12;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xE2: { /* 3rd-level cache: 2 MByte, 16-way, 64 byte line */
+    _s->L3.capacity = 2;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 16;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xE3: { /* 3rd-level cache: 4 MByte, 16-way, 64 byte line */
+    _s->L3.capacity = 4;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 16;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xE4: { /* 3rd-level cache: 8 MByte, 16-way, 64 byte line */
+    _s->L3.capacity = 8;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 16;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xEA: { /* 3rd-level cache: 12 MByte, 24-way, 64 byte line */
+    _s->L3.capacity = 12;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 24;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xEB: { /* 3rd-level cache: 18 MByte, 24-way, 64 byte line */
+    _s->L3.capacity = 18;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 24;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xEC: { /* 3rd-level cache: 24 MByte, 24-way, 64 byte line */
+    _s->L3.capacity = 24;
+    _s->L3.capacity_type = megabyte;
+    _s->L3.associativity = 24;
+    _s->L3.cache_line_size = 64;
+    break;
+  }
+  case 0xF0: { /* Prefetch: 64-Byte prefetching */ _s->byte_prefetch = 64; break;
+  }
+  case 0xF1: { /* Prefetch: 128-Byte prefetching */ _s->byte_prefetch = 128; break;
+  }
+  case 0xFE: { /* General: CPUID leaf 2 does not report TLB descriptor information */
+    /* Nothing to populate here; consumer should query leaf 0x18 */
+    break;
+  }
+  case 0xFF: { /* General: CPUID leaf 2 does not report cache descriptor information */
+    /* Nothing to populate here; consumer should query leaf 4 */
+    break;
+  }
+  default: {
+    /* Unknown descriptor — leave structure unchanged */
+    break;
+  }
   }
 }
 
@@ -689,9 +1479,7 @@ DE_CPUID_INTERNAL bool de_CPUID__CACHE__TLB(de_Cos_CACHE__TLB *_s) {
 
   /* iterate calls, reuse regs for call == 0 to avoid redundant request */
   for (usize call = 0; call < call_amount; ++call) {
-    if (call == 0) {
-      /* regs already contains the first result */
-    } else {
+    if (call != 0) {
       if (!de_cpuid_request(DE_CIAX__CACHE__TLB, call, &regs)) {
         /* if a later call fails, consider result partial but valid? here we fail */
         _s->valid = false;
@@ -702,23 +1490,29 @@ DE_CPUID_INTERNAL bool de_CPUID__CACHE__TLB(de_Cos_CACHE__TLB *_s) {
     for (usize r = 0; r < 4; ++r) {
       u32 reg = regs.regs[r];
 
-      /* Intel: if MSB is 1, the whole 32-bit register contains no valid descriptors */
+      /* If this is EAX (r==0) we must mask out the low 8 bits (AL) which
+         hold the call_amount, not a descriptor byte. */
+      if (r == 0) reg &= 0xFFFFFF00u;
+
+      /* Intel: if MSB is 1 the whole 32-bit register contains no valid descriptors */
       if (reg & 0x80000000U) continue;
 
       for (usize b = 0; b < 4; ++b) {
         u8 byte = (u8)((reg >> (8 * b)) & 0xFFU);
 
-        if (byte == 0x00) continue;
+        if (byte == 0x00) continue; /* null descriptor -> skip */
 
         /* record that we must consult other leaves rather than bail out */
         if (byte == 0xFF) {
-          /* TODO: needs leaf 4 here for information, idfk to be implemented ig */
+          /* TODO: needs leaf 4 here for information */
           continue;
         }
         if (byte == 0xFE) {
-          /* TODO: needs leaf 18 here for information, idfk to be implemented ig */
+          /* TODO: needs leaf 18 here for information */
           continue;
         }
+
+        DE_CPUID_PRINTF("cache/tlb descriptor found: 0x%02X (reg %u byte %u)\n", byte, (unsigned)r, (unsigned)b);
 
         /* Normal descriptor — dispatch to your handler */
         de_CPUID__CACHE__TLB_byte_switch(_s, byte);
@@ -731,7 +1525,103 @@ DE_CPUID_INTERNAL bool de_CPUID__CACHE__TLB(de_Cos_CACHE__TLB *_s) {
   return true;
 }
 
+DE_CPUID_INTERNAL char de_CPUID_IMPL_bitesize_pref_str(de_cpuid_bitesize _s) {
+  switch (_s) {
+  case byte: {
+    return ' ';
+  }
+  case kilobyte: {
+    return 'K';
+  }
+  case megabyte: {
+    return 'M';
+  }
+  case gigabyte: {
+    return 'G';
+  }
+  default: {
+    return '#';
+  }
+  }
+}
+
+DE_CPUID_INTERNAL u0 de_CPUID__CACHE__TLB__print_TLB(de_Cos_CACHE__TLB_TLB _s) {
+  DE_CPUID_PRINTF("entries: %llu\n", _s.entries);
+  DE_CPUID_PRINTF("page_size: %llu %cp\n", _s.page_size, de_CPUID_IMPL_bitesize_pref_str(_s.page_size_type));
+  if (_s.associativity) {
+    DE_CPUID_PRINTF("associativity: %llu-way\n", _s.associativity);
+  } else {
+    DE_CPUID_PRINTF("associativity: fully\n");
+  }
+}
+DE_CPUID_INTERNAL u0 de_CPUID__CACHE__TLB__print_TLB_A(de_Cos_CACHE__TLB_TLB_A _s) {
+  DE_CPUID_PRINTF("cache_line_size: %llu\n", _s.cache_line_size);
+  DE_CPUID_PRINTF("page_size: %llu %cp\n", _s.page_size, de_CPUID_IMPL_bitesize_pref_str(_s.page_size_type));
+  if (_s.associativity) {
+    DE_CPUID_PRINTF("associativity: %llu-way\n", _s.associativity);
+  } else {
+    DE_CPUID_PRINTF("associativity: fully\n");
+  }
+}
+DE_CPUID_INTERNAL u0 de_CPUID__CACHE__TLB__print_CACHE(de_Cos_CACHE__TLB_CACHE _s) {
+  DE_CPUID_PRINTF("capacity: %llu %cB\n", _s.capacity, de_CPUID_IMPL_bitesize_pref_str(_s.capacity_type));
+  DE_CPUID_PRINTF("cache_line_size: %llu B\n", _s.cache_line_size);
+  DE_CPUID_PRINTF("cache_sector_size: %llu lines\n", _s.cache_sector_size);
+  if (_s.associativity) {
+    DE_CPUID_PRINTF("associativity: %llu-way\n", _s.associativity);
+  } else {
+    DE_CPUID_PRINTF("associativity: fully\n");
+  }
+}
+DE_CPUID_INTERNAL u0 de_CPUID__CACHE__TLB__print_TRACE_CACHE(de_Cos_CACHE__TLB_TRACE_CACHE _s) {
+  DE_CPUID_PRINTF("capacity: %llu %c-uop\n", _s.capacity_uop, de_CPUID_IMPL_bitesize_pref_str(_s.capacity_type));
+  if (_s.associativity) {
+    DE_CPUID_PRINTF("associativity: %llu-way\n", _s.associativity);
+  } else {
+    DE_CPUID_PRINTF("associativity: fully\n");
+  }
+}
+
 DE_CPUID_INTERNAL u0 de_CPUID__CACHE__TLB_print(de_Cos_CACHE__TLB *_s) { //
+  DE_CPUID_PRINTF("## Cache and TLB Descriptor Information ##\n");
+  if (_s->valid) {
+
+    if (_s->L1I.page_size != 0) {
+      DE_CPUID_PRINTF("L1 Instruction Cache:\n");
+      de_CPUID__CACHE__TLB__print_TLB(_s->L1I);
+    }
+    if (_s->L1D.page_size != 0) {
+      DE_CPUID_PRINTF("L1 Data Cache:\n");
+      de_CPUID__CACHE__TLB__print_TLB(_s->L1D);
+    } else if (_s->L1D_ALTERNATIVE.page_size != 0) {
+      DE_CPUID_PRINTF("L1 Data Cache:\n");
+      de_CPUID__CACHE__TLB__print_TLB_A(_s->L1D_ALTERNATIVE);
+    }
+    if (_s->L2.capacity != 0) {
+      DE_CPUID_PRINTF("L2 Cache:\n");
+      de_CPUID__CACHE__TLB__print_CACHE(_s->L2);
+    }
+    if (_s->L2TLB_1.page_size != 0) {
+      DE_CPUID_PRINTF("L2TLB:\n");
+      de_CPUID__CACHE__TLB__print_TLB(_s->L2TLB_1);
+
+      if (_s->L2TLB_2.page_size != 0) {
+        DE_CPUID_PRINTF("L2TLB2:\n");
+        de_CPUID__CACHE__TLB__print_TLB(_s->L2TLB_2);
+      }
+    }
+    if (_s->L3.capacity != 0) {
+      DE_CPUID_PRINTF("L3 Cache:\n");
+      de_CPUID__CACHE__TLB__print_CACHE(_s->L3);
+    }
+    if (_s->trace_cache.capacity_uop != 0) {
+      DE_CPUID_PRINTF("trace_cache:\n");
+      de_CPUID__CACHE__TLB__print_TRACE_CACHE(_s->trace_cache);
+    }
+    DE_CPUID_PRINTF("Byte prefetch: %llu\n", _s->byte_prefetch);
+  } else {
+    DE_CPUID_PRINTF("extracted Information is invalid");
+  }
 }
 
 #ifdef __cplusplus

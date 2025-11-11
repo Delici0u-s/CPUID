@@ -268,10 +268,10 @@ DE_CPUID_BASE_INTERNAL bool de_cpuid_verify_op(u32 _op) {
   if (!atomic_load_explicit(&inited, memory_order_acquire)) {
     u32 a = 0, b = 0, c = 0, d = 0;
 
-    __cpuid(DE_CIAX__MAX_IAX__MANUFAC_ID, a, b, c, d);
+    __cpuid(0x00000000, a, b, c, d);
     max_basic = a;
 
-    __cpuid(DE_CIAX__MAX_EIAX, a, b, c, d);
+    __cpuid(0x80000000, a, b, c, d);
     max_extended = a;
 
     atomic_store_explicit(&inited, true, memory_order_release);

@@ -58,6 +58,24 @@ void print_regs(de_cpuid_regs _r) {
 }
 
 int main() {
+  de_Cos_max_iax_manufacturer_ID _m2;
+  de_CPUID_max_IAX_manufacturer_ID(&_m2);
+  de_CPUID_max_IAX_manufacturer_ID_print(&_m2);
+  de_cpuid_regs regs;
+
+  de_cpuid_request(0x00000000, 0, &regs);
+  de_cpuid_request(0x00000002, 0, &regs);
+  print_regs(regs);
+  de_cpuid_request(DE_CIAX__CACHE__TLB, 0, &regs);
+  print_regs(regs);
+  de_cpuid_request(DE_CIAX__CACHE__TLB, 1, &regs);
+  print_regs(regs);
+  return 0;
+  de_Cos_CACHE__TLB _T;
+  de_CPUID__CACHE__TLB(&_T);
+  de_CPUID__CACHE__TLB_print(&_T);
+
+  return 0;
   de_Cos_max_iax_manufacturer_ID _m;
   de_CPUID_max_IAX_manufacturer_ID(&_m);
   de_CPUID_max_IAX_manufacturer_ID_print(&_m);
